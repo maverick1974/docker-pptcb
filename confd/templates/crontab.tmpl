@@ -1,1 +1,1 @@
-* * * * * root export GEM_HOME=/usr/local/bundle; /usr/bin/pptcb -u {{ getenv "URL" }} -p {{ getenv "PROJECT" }} -t {{ getenv "TOKEN" }} >> /var/log/cron.log 2>&1
+* * * * * root GEM_HOME=/usr/local/bundle; PATH=/usr/local/bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; /usr/bin/pptcb -u {{ getenv "URL" }} -p {{ getenv "PROJECT" }} -t {{ getenv "TOKEN" }} >> /var/log/cron.log 2>&1
