@@ -1,0 +1,4 @@
+#!/bin/bash -ex
+
+# RUN
+/usr/sbin/cron && tail -f /var/log/cron.log

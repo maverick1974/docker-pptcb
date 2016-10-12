@@ -1,0 +1,101 @@
+#!/usr/local/bin/ruby
+
+require 'fileutils'
+require 'json'
+require 'logger'
+require 'net/http'
+require 'optparse'
+require 'uri'
+require 'yaml'
+require 'zip/zip'
+
+logger = Logger.new( STDOUT )
+logger.level = Logger::INFO
+
+options = {}
+OptionParser.new do |opts|
+  opts.banner = "Usage: sync.rb --url URL [options]"
+
+  opts.on( '-u', '--url URL', 'GitLab URL' )           { |v| options[:url] = v }
+  opts.on( '-t', '--token TOKEN', 'GitLab token' )     { |v| options[:token] = v }
+  opts.on( '-p', '--project ID', 'GitLab project ID' ) { |v| options[:project_id] = v }
+  opts.on( '-h', '--help', 'Prints this help' )        { puts opts; exit }
+
+end.parse!
+
+raise OptionParser::MissingArgument if options[:url].nil? or options[:url].nil? or options[:project_id].nil?
+
+def request( options, request, params={} )
+  uri = URI.parse( "#{options[:url]}/api/v3/projects/#{options[:project_id]}/#{request}" )
+  uri.query = URI.encode_www_form( params )
+  request = Net::HTTP::Get.new( uri )
+  request['Private-Token'] = options[:token]
+
+  response = Net::HTTP.start( uri.hostname, uri.port, use_ssl: uri.scheme == 'https' ) do |http|
+    http.request( request )
+  end
+
+  if response.code == '200'
+    return response.body
+  else
+    puts "Error #{response.code} with the gitlab request"
+    puts uri
+    return []
+  end
+end
+
+def get_branches( options )
+  branches = []
+  JSON.parse( request( options, 'repository/branches' ) ).each do |v|
+    branches.push( v['name'] )
+  end
+  return branches
+end
+
+def get_builds( options )
+  return JSON.parse( request( options, 'builds', { :scope => 'success' } ) )
+end
+
+def get_latest_successful_build_for_branch( builds, branch )
+  builds.each do |bu|
+    if bu['ref'] == branch
+      return bu['id']
+    end
+  end
+  return 0
+end
+
+def install_artifact( logger, options, build_id )
+  path = "/tmp/builds/#{build_id}"
+  artifact = "#{path}/artifact.zip"
+
+  if ! File.directory?( path )
+    FileUtils.mkpath( path )
+    logger.info( "Created path : /tmp/builds/#{build_id}" )
+    open( artifact, "wb") do |file|
+      file.write( request( options, "builds/#{build_id}/artifacts" ) )
+    end
+
+    Zip::ZipFile.open( artifact ) { |zip_file|
+     zip_file.each { |f|
+       zip_file.extract( f, "#{path}/artifact.deb" )
+     }
+    }
+
+    system( "dpkg -i #{path}/artifact.deb" )
+  else
+    logger.info( "Build already deployed : /tmp/builds/#{build_id}" )
+  end
+end
+
+builds = get_builds( options )
+
+get_branches( options ).each do |br|
+  build_id = get_latest_successful_build_for_branch( builds, br )
+  if build_id != 0
+    logger.info( "Found a build_id \##{build_id} for branch '#{br}'" )
+    install_artifact( logger, options, build_id )
+  else
+    logger.info( "No successful builds found for branch '#{br}'" )
+  end
+end

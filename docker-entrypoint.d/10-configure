@@ -1,0 +1,9 @@
+#!/bin/bash -ex
+
+# VARIABLES
+test ${URL}
+test ${TOKEN}
+test ${PROJECT}
+
+# CONFIGURE
+/usr/local/bin/confd -onetime -backend env
